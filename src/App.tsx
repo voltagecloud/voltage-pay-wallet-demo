@@ -1,57 +1,126 @@
+import { useState } from 'react';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import WalletBalance from './components/WalletBalance';
+import SendPayment from './components/SendPayment';
+import ReceivePayment from './components/ReceivePayment';
+import TransactionHistory from './components/TransactionHistory';
+import Notification from './components/Notification';
+import { useNotification } from './hooks/useNotification';
+
+type ActiveTab = 'balance' | 'send' | 'receive' | 'history';
+
 function App() {
+  const [activeTab, setActiveTab] = useState<ActiveTab>('balance');
+  const { notification, showSuccess, showError, hideNotification } = useNotification();
+
+  const handlePaymentSuccess = (message: string) => {
+    showSuccess(message);
+    setActiveTab('history');
+  };
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'balance':
+        return <WalletBalance onError={showError} />;
+      case 'send':
+        return (
+          <SendPayment
+            onSuccess={() => handlePaymentSuccess('Payment sent successfully!')}
+            onError={showError}
+          />
+        );
+      case 'receive':
+        return (
+          <ReceivePayment
+            onSuccess={() => handlePaymentSuccess('Payment received successfully!')}
+            onError={showError}
+          />
+        );
+      case 'history':
+        return <TransactionHistory onError={showError} />;
+      default:
+        return <WalletBalance onError={showError} />;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="w-full bg-white rounded-lg shadow-md">
-        <div className="p-6">
-          <h1 className="text-3xl font-bold text-center mb-8">Lightning Wallet</h1>
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gray-100 p-4">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">
+            Voltage Pay Wallet Demo
+          </h1>
           
-          <div className="mb-8">
-            <div className="bg-gray-50 rounded-lg p-6 text-center">
-              <p className="text-sm text-gray-600 mb-3">Balance</p>
-              <p className="text-4xl font-bold">0 sats</p>
-              <p className="text-lg text-gray-500 mt-2">$0.00 USD</p>
+          {/* Navigation Tabs */}
+          <div className="bg-white rounded-lg shadow mb-6">
+            <div className="flex border-b">
+              <button
+                onClick={() => setActiveTab('balance')}
+                className={`flex-1 py-4 px-6 text-center font-medium ${
+                  activeTab === 'balance'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Balance
+              </button>
+              <button
+                onClick={() => setActiveTab('send')}
+                className={`flex-1 py-4 px-6 text-center font-medium ${
+                  activeTab === 'send'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Send
+              </button>
+              <button
+                onClick={() => setActiveTab('receive')}
+                className={`flex-1 py-4 px-6 text-center font-medium ${
+                  activeTab === 'receive'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Receive
+              </button>
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`flex-1 py-4 px-6 text-center font-medium ${
+                  activeTab === 'history'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                History
+              </button>
             </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            <button className="bg-orange-500 text-white py-4 px-6 rounded-lg font-medium hover:bg-orange-600 text-lg">
-              Send
-            </button>
-            <button className="bg-blue-500 text-white py-4 px-6 rounded-lg font-medium hover:bg-blue-600 text-lg">
-              Receive
-            </button>
-          </div>
-
-          <div className="border-t pt-6">
-            <h2 className="text-xl font-semibold mb-4">Recent Transactions</h2>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center py-3 border-b border-gray-100">
-                <div>
-                  <p className="font-medium">Payment received</p>
-                  <p className="text-sm text-gray-500">2 hours ago</p>
-                </div>
-                <p className="text-green-600 font-medium">+50,000 sats</p>
+          
+          {/* Content Area */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {activeTab === 'balance' && (
+              <div className="lg:col-span-1">
+                <WalletBalance onError={showError} />
               </div>
-              <div className="flex justify-between items-center py-3 border-b border-gray-100">
-                <div>
-                  <p className="font-medium">Payment sent</p>
-                  <p className="text-sm text-gray-500">1 day ago</p>
-                </div>
-                <p className="text-red-600 font-medium">-25,000 sats</p>
-              </div>
-              <div className="flex justify-between items-center py-3">
-                <div>
-                  <p className="font-medium">Payment received</p>
-                  <p className="text-sm text-gray-500">3 days ago</p>
-                </div>
-                <p className="text-green-600 font-medium">+100,000 sats</p>
-              </div>
+            )}
+            <div className={activeTab === 'balance' ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              {renderContent()}
             </div>
           </div>
         </div>
+        
+        {/* Notifications */}
+        {notification.isVisible && (
+          <Notification
+            message={notification.message}
+            type={notification.type}
+            onClose={hideNotification}
+          />
+        )}
       </div>
-    </div>
-  )
+    </ErrorBoundary>
+  );
 }
 
-export default App
+export default App;
