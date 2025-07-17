@@ -92,6 +92,18 @@ class VoltageAPI {
     );
   }
 
+  async getPayments(limit = 20, offset = 0): Promise<{ items: Payment[]; total: number; limit: number; offset: number }> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      offset: offset.toString(),
+      wallet_id: this.config.walletId,
+    });
+
+    return this.makeRequest<{ items: Payment[]; total: number; limit: number; offset: number }>(
+      `/organizations/${this.config.organizationId}/environments/${this.config.environmentId}/payments?${params}`
+    );
+  }
+
   async getPayment(paymentId: string): Promise<Payment> {
     return this.makeRequest<Payment>(
       `/organizations/${this.config.organizationId}/environments/${this.config.environmentId}/payments/${paymentId}`

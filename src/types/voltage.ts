@@ -63,6 +63,11 @@ export interface Payment {
   wallet_id: string;
   error: string | null;
   bip21_uri?: string;
+  requested_amount?: {
+    amount: number;
+    currency: string;
+    unit: string;
+  };
 }
 
 export interface CreatePaymentRequest {
