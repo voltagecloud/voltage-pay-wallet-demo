@@ -157,16 +157,25 @@ class VoltageAPI {
   ): Promise<string> {
     const paymentId = crypto.randomUUID();
     
-    await this.createPayment({
+    const sendPaymentRequest = {
       id: paymentId,
       wallet_id: this.config.walletId,
       currency: 'btc',
+      type: 'bolt11',
       data: {
         payment_request: paymentRequest,
-        amount_msats: amountMsats,
-        max_fee_msats: maxFeeMsats,
+        ...(amountMsats && { amount_msats: amountMsats }),
+        ...(maxFeeMsats && { max_fee_msats: maxFeeMsats }),
       },
-    });
+    };
+    
+    await this.makeRequest<void>(
+      `/organizations/${this.config.organizationId}/environments/${this.config.environmentId}/payments`,
+      {
+        method: 'POST',
+        body: JSON.stringify(sendPaymentRequest),
+      }
+    );
 
     return paymentId;
   }
