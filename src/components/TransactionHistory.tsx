@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import type { Payment } from '../types/voltage';
+import { useState, useEffect, useMemo } from 'react';
+import type { Payment, SupportedAssets, NamedAsset, Amount } from '../types/voltage';
 import { createVoltageAPI } from '../services/voltage';
 
 interface TransactionHistoryProps {
@@ -10,13 +10,18 @@ export default function TransactionHistory({ onError }: TransactionHistoryProps)
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [assets, setAssets] = useState<SupportedAssets | null>(null);
 
   useEffect(() => {
     const fetchPayments = async () => {
       try {
         const api = createVoltageAPI();
-        const response = await api.getPayments(20, 0);
+        const [response, supported] = await Promise.all([
+          api.getPayments(20, 0),
+          api.getSupportedAssets().catch(() => null),
+        ]);
         setPayments(response.items);
+        if (supported) setAssets(supported);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to fetch payments';
         onError?.(errorMessage);
@@ -28,26 +33,65 @@ export default function TransactionHistory({ onError }: TransactionHistoryProps)
     fetchPayments();
   }, [onError]);
 
+  const assetMap = useMemo(() => {
+    const m = new Map<string, NamedAsset>();
+    assets?.assets.forEach(a => m.set(`asset:${a.asset}`.toLowerCase(), a));
+    return m;
+  }, [assets]);
+
   const formatSats = (msats: number) => {
     return (msats / 1000).toLocaleString();
   };
 
   const getPaymentAmount = (payment: Payment) => {
-    if (payment.data.amount_msats) {
-      return formatSats(payment.data.amount_msats);
+    // BTC bolt11
+    if (payment.data?.amount_msats) {
+      return `${formatSats(payment.data.amount_msats)} sats`;
     }
-    if (payment.requested_amount) {
-      return formatSats(payment.requested_amount.amount);
+    const amt: Amount | undefined = payment.requested_amount || payment.data?.amount;
+    if (!amt) return 'N/A';
+    const cur = String(amt.currency).toLowerCase();
+    if (cur === 'btc' || amt.unit === 'msats') {
+      return `${formatSats(amt.amount)} sats`;
     }
-    return 'N/A';
+    if (typeof amt.currency === 'string' && cur.startsWith('asset:')) {
+      const meta = assetMap.get(cur);
+      const decimals = meta?.decimal_display ?? 0;
+      const whole = (amt.amount / Math.pow(10, decimals)).toLocaleString();
+      const label = meta?.name ?? 'Asset';
+      return `${whole} ${label}`;
+    }
+    return `${amt.amount.toLocaleString()} ${amt.unit || ''}`.trim();
+  };
+
+  const formatAnyAmount = (amt: Amount) => {
+    const cur = String(amt.currency).toLowerCase();
+    if (cur === 'btc' || amt.unit === 'msats') {
+      const sats = Math.floor(amt.amount / 1000);
+      return `${sats.toLocaleString()} sats`;
+    }
+    if (typeof amt.currency === 'string' && cur.startsWith('asset:')) {
+      const meta = assetMap.get(cur);
+      const decimals = meta?.decimal_display ?? 0;
+      const whole = (amt.amount / Math.pow(10, decimals)).toLocaleString();
+      const label = meta?.name ?? 'Asset';
+      return `${whole} ${label}`;
+    }
+    return `${amt.amount.toLocaleString()} ${amt.unit || ''}`.trim();
   };
 
   const getStatusColor = (status: Payment['status']) => {
     switch (status) {
-      case 'completed': return 'text-green-600';
-      case 'failed': return 'text-red-600';
-      case 'sending': case 'receiving': case 'generating': return 'text-yellow-600';
-      default: return 'text-gray-600';
+      case 'completed':
+        return 'text-success';
+      case 'failed':
+        return 'text-danger';
+      case 'sending':
+      case 'receiving':
+      case 'generating':
+        return 'text-warning-strong';
+      default:
+        return 'text-ink-subtle';
     }
   };
 
@@ -82,119 +126,154 @@ export default function TransactionHistory({ onError }: TransactionHistoryProps)
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">Transaction History</h2>
-        <div className="animate-pulse space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="border-b pb-3">
-              <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
-              <div className="h-3 bg-gray-200 rounded w-24"></div>
+      <section className="surface-panel p-6 space-y-6">
+        <div className="space-y-1">
+          <h2 className="text-display-md font-medium">Transaction History</h2>
+          <p className="text-body-subtle">Recent sends and receives across all rails.</p>
+        </div>
+        <div className="space-y-4">
+          {[...Array(3)].map((_, index) => (
+            <div key={index} className="animate-pulse rounded-2xl border border-border-default bg-surface px-5 py-4">
+              <div className="h-4 w-40 rounded-full bg-surface-subtle"></div>
+              <div className="mt-2 h-3 w-32 rounded-full bg-surface-subtle/80"></div>
             </div>
           ))}
         </div>
-      </div>
+      </section>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold mb-4">Transaction History</h2>
-      
+    <section className="surface-panel p-6 space-y-6">
+      <div className="space-y-1">
+        <h2 className="text-display-md font-medium">Transaction History</h2>
+        <p className="text-body-subtle">Tap into invoice metadata, fees, and statuses with one click.</p>
+      </div>
+
       {payments.length === 0 ? (
-        <p className="text-gray-500 text-center py-8">No payments yet</p>
+        <p className="text-body-muted text-center py-8">No payments yet.</p>
       ) : (
         <div className="space-y-3">
           {payments.map((payment) => (
-            <div key={payment.id} className="border-b pb-3 last:border-b-0">
-              <div 
-                className="flex justify-between items-start cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors"
+            <article key={payment.id} className="rounded-2xl border border-border-default bg-surface px-5 py-4">
+              <button
+                type="button"
                 onClick={() => setSelectedPayment(selectedPayment?.id === payment.id ? null : payment)}
+                className="flex w-full items-start justify-between gap-4 text-left transition-colors hover:bg-surface-subtle rounded-2xl px-3 py-2"
               >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-lg">{getDirectionIcon(payment.direction)}</span>
-                    <p className={`font-semibold ${
-                      payment.direction === 'receive' ? 'text-green-600' : 'text-orange-600'
-                    }`}>
-                      {payment.direction === 'receive' ? '+' : '-'}{getPaymentAmount(payment)} sats
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg text-ink-muted">{getDirectionIcon(payment.direction)}</span>
+                    <p
+                      className={`text-body-lg-strong ${
+                        payment.direction === 'receive' ? 'text-success' : 'text-danger'
+                      }`}
+                    >
+                      {payment.direction === 'receive' ? '+' : '-'}{getPaymentAmount(payment)}
                     </p>
-                    <span className={`text-sm ${getStatusColor(payment.status)}`}>
+                    <span className={`badge ${getStatusColor(payment.status)}`}>
                       {getStatusIcon(payment.status)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3 text-sm text-gray-500">
+                  <div className="flex flex-wrap items-center gap-3 text-body-sm text-ink-subtle">
                     <span>{formatDate(payment.created_at)}</span>
                     <span className="capitalize">{payment.type}</span>
-                    <span className={`capitalize ${getStatusColor(payment.status)}`}>
-                      {payment.status}
-                    </span>
+                    <span className={`capitalize ${getStatusColor(payment.status)}`}>{payment.status}</span>
                   </div>
                 </div>
-                <div className="text-right text-xs text-gray-400">
-                  <p>{payment.id.slice(0, 8)}...</p>
-                  <p className="mt-1">Click for details</p>
+                <div className="text-right text-body-sm text-ink-subtle">
+                  <p className="font-mono text-xs text-ink-muted">{payment.id.slice(0, 8)}…</p>
+                  <p className="text-body-sm text-ink-subtle">Details</p>
                 </div>
-              </div>
-              
+              </button>
+
               {selectedPayment?.id === payment.id && (
-                <div className="mt-3 p-3 bg-gray-50 rounded text-sm space-y-2">
-                  <div className="grid grid-cols-2 gap-4">
+                <div className="mt-4 space-y-4 rounded-2xl border border-border-muted bg-surface-subtle px-5 py-4 text-body-sm text-ink">
+                  <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <p className="font-medium text-gray-700">Payment ID</p>
-                      <p className="text-gray-600 font-mono text-xs break-all">{payment.id}</p>
+                      <p className="text-body-md-strong text-ink-muted">Payment ID</p>
+                      <p className="text-mono break-all text-ink">{payment.id}</p>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-700">Type & Direction</p>
-                      <p className="text-gray-600">{payment.type} • {payment.direction}</p>
+                      <p className="text-body-md-strong text-ink-muted">Type & Direction</p>
+                      <p className="text-body-md text-ink">{payment.type} • {payment.direction}</p>
                     </div>
                   </div>
-                  
+
                   {payment.data.memo && (
                     <div>
-                      <p className="font-medium text-gray-700">Description</p>
-                      <p className="text-gray-600">{payment.data.memo}</p>
+                      <p className="text-body-md-strong text-ink-muted">Description</p>
+                      <p className="text-body-md text-ink">{payment.data.memo}</p>
                     </div>
                   )}
-                  
+
                   {payment.data.payment_request && (
-                    <div>
-                      <p className="font-medium text-gray-700">Lightning Invoice</p>
-                      <p className="text-gray-600 font-mono text-xs break-all bg-white p-2 rounded border">
+                    <div className="space-y-2">
+                      <p className="text-body-md-strong text-ink-muted">Lightning Invoice</p>
+                      <p className="rounded-2xl border border-border-default bg-surface px-4 py-2 font-mono text-xs text-ink break-all">
                         {formatPaymentRequest(payment.data.payment_request)}
                       </p>
                     </div>
                   )}
-                  
-                  {payment.data.max_fee_msats && (
-                    <div>
-                      <p className="font-medium text-gray-700">Max Fee</p>
-                      <p className="text-gray-600">{formatSats(payment.data.max_fee_msats)} sats</p>
+
+                  {payment.direction === 'send' && (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {typeof payment.data.fee_msats === 'number' && (
+                        <div>
+                          <p className="text-body-md-strong text-ink-muted">Fee Paid</p>
+                          <p>{formatSats(payment.data.fee_msats)} sats</p>
+                        </div>
+                      )}
+                      {typeof payment.data.fee_sats === 'number' && (
+                        <div>
+                          <p className="text-body-md-strong text-ink-muted">Fee Paid</p>
+                          <p>{payment.data.fee_sats?.toLocaleString()} sats</p>
+                        </div>
+                      )}
+                      {payment.data.fees && (
+                        <div>
+                          <p className="text-body-md-strong text-ink-muted">Fee Paid</p>
+                          <p>{formatAnyAmount(payment.data.fees)}</p>
+                        </div>
+                      )}
+                      {payment.data.max_fee_msats && (
+                        <div>
+                          <p className="text-body-md-strong text-ink-muted">Max Fee (limit)</p>
+                          <p>{formatSats(payment.data.max_fee_msats)} sats</p>
+                        </div>
+                      )}
+                      {payment.data.max_fee && (
+                        <div>
+                          <p className="text-body-md-strong text-ink-muted">Max Fee (limit)</p>
+                          <p>{formatAnyAmount(payment.data.max_fee)}</p>
+                        </div>
+                      )}
                     </div>
                   )}
-                  
-                  <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+
+                  <div className="grid gap-4 border-t border-border-muted pt-4 md:grid-cols-2">
                     <div>
-                      <p className="font-medium text-gray-700">Created</p>
-                      <p className="text-gray-600">{new Date(payment.created_at).toLocaleString()}</p>
+                      <p className="text-body-md-strong text-ink-muted">Created</p>
+                      <p>{new Date(payment.created_at).toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-700">Updated</p>
-                      <p className="text-gray-600">{new Date(payment.updated_at).toLocaleString()}</p>
+                      <p className="text-body-md-strong text-ink-muted">Updated</p>
+                      <p>{new Date(payment.updated_at).toLocaleString()}</p>
                     </div>
                   </div>
-                  
+
                   {payment.error && (
-                    <div className="pt-2 border-t">
-                      <p className="font-medium text-red-700">Error</p>
-                      <p className="text-red-600">{payment.error}</p>
+                    <div className="border-t border-border-muted pt-4">
+                      <p className="text-body-md-strong text-danger">Error</p>
+                      <p className="text-body-md text-danger">{payment.error}</p>
                     </div>
                   )}
                 </div>
               )}
-            </div>
+            </article>
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }

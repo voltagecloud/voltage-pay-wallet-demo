@@ -18,28 +18,31 @@ export default function Notification({
     return () => clearTimeout(timer);
   }, [onClose, duration]);
 
-  const bgColor = {
-    success: 'bg-green-500',
-    error: 'bg-red-500',
-    info: 'bg-blue-500'
-  }[type];
-
-  const icon = {
-    success: '✅',
-    error: '❌',
-    info: 'ℹ️'
+  const variant = {
+    success: {
+      container: 'bg-success text-ink-inverse',
+      icon: '✅',
+    },
+    error: {
+      container: 'bg-danger text-ink-inverse',
+      icon: '⛔',
+    },
+    info: {
+      container: 'bg-brand text-ink-inverse',
+      icon: 'ℹ️',
+    },
   }[type];
 
   return (
-    <div className={`fixed top-4 right-4 ${bgColor} text-white px-6 py-4 rounded-lg shadow-lg z-50 max-w-md`}>
-      <div className="flex items-start">
-        <span className="text-lg mr-3">{icon}</span>
-        <div className="flex-1">
-          <p className="text-sm font-medium">{message}</p>
-        </div>
+    <div className={`fixed top-6 right-6 z-50 max-w-md rounded-2xl border border-ink-inverse/20 px-6 py-4 shadow-flyout transition-transform ${variant.container}`}>
+      <div className="flex items-start gap-3">
+        <span className="text-lg leading-none">{variant.icon}</span>
+        <p className="flex-1 text-body-md font-medium leading-snug">{message}</p>
         <button
+          type="button"
           onClick={onClose}
-          className="ml-4 text-white hover:text-gray-200"
+          className="text-body-md font-semibold text-ink-inverse transition-opacity hover:opacity-80"
+          aria-label="Dismiss notification"
         >
           ×
         </button>

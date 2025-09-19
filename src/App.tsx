@@ -21,7 +21,8 @@ function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'balance':
-        return <WalletBalance onError={showError} />;
+        // Handled directly in the grid layout to avoid duplicating the card
+        return null;
       case 'send':
         return (
           <SendPayment
@@ -45,71 +46,53 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gray-100 p-4">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">
-            Voltage Pay Wallet Demo
-          </h1>
-          
+      <div className="surface-shell px-4 py-8 md:px-10">
+        <div className="mx-auto max-w-5xl space-y-10">
+          <header className="text-center space-y-3">
+            <span className="heading-eyebrow">Voltage</span>
+            <h1 className="text-display-lg font-semibold">Payments Demo</h1>
+            <p className="text-body-muted">Unified Bitcoin, Lightning, and asset Payments powered by Voltage.</p>
+          </header>
+
           {/* Navigation Tabs */}
-          <div className="bg-white rounded-lg shadow mb-6">
-            <div className="flex border-b">
+          <nav className="tab-bar p-1 shadow-card">
+            {([
+              ['balance', 'Balance'],
+              ['send', 'Send'],
+              ['receive', 'Receive'],
+              ['history', 'History'],
+            ] as [ActiveTab, string][]).map(([value, label]) => (
               <button
-                onClick={() => setActiveTab('balance')}
-                className={`flex-1 py-4 px-6 text-center font-medium ${
-                  activeTab === 'balance'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
+                key={value}
+                type="button"
+                data-active={(activeTab === value).toString()}
+                onClick={() => setActiveTab(value)}
+                className="tab-trigger"
               >
-                Balance
+                {label}
               </button>
-              <button
-                onClick={() => setActiveTab('send')}
-                className={`flex-1 py-4 px-6 text-center font-medium ${
-                  activeTab === 'send'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Send
-              </button>
-              <button
-                onClick={() => setActiveTab('receive')}
-                className={`flex-1 py-4 px-6 text-center font-medium ${
-                  activeTab === 'receive'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Receive
-              </button>
-              <button
-                onClick={() => setActiveTab('history')}
-                className={`flex-1 py-4 px-6 text-center font-medium ${
-                  activeTab === 'history'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                History
-              </button>
-            </div>
-          </div>
-          
+            ))}
+          </nav>
+
           {/* Content Area */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {activeTab === 'balance' && (
-              <div className="lg:col-span-1">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 with-grid-gaps">
+            {activeTab === 'balance' ? (
+              <div className="lg:col-span-3">
                 <WalletBalance onError={showError} />
               </div>
+            ) : (
+              <>
+                <div className="lg:col-span-1">
+                  <WalletBalance onError={showError} />
+                </div>
+                <div className="lg:col-span-2">
+                  {renderContent()}
+                </div>
+              </>
             )}
-            <div className={activeTab === 'balance' ? 'lg:col-span-2' : 'lg:col-span-3'}>
-              {renderContent()}
-            </div>
           </div>
         </div>
-        
+
         {/* Notifications */}
         {notification.isVisible && (
           <Notification

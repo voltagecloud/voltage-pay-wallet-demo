@@ -5,14 +5,26 @@ export interface VoltageConfig {
   environmentId: string;
   walletId: string;
   lineOfCreditId: string;
-  network: 'mutinynet' | 'mainnet' | 'testnet3';
+  network: 'mutinynet' | 'mainnet' | 'testnet3' | 'signet' | 'testnet';
+  /** Optional: pre-configured Voltage Cash asset group key (66 hex chars) */
+  cashAssetGroupKey?: string;
 }
 
-export interface BalanceAmount {
+// Generic currency + amount types aligned with OpenAPI
+export type Currency = 'btc' | 'usd' | `asset:${string}`;
+
+export type AmountUnit = 'msats' | 'cents' | 'base units';
+
+export interface Amount {
   amount: number;
-  currency: string;
+  currency: Currency;
+  unit?: AmountUnit;
+  negative?: boolean;
+}
+
+export interface BalanceAmount extends Amount {
   negative: boolean;
-  unit: string;
+  unit: AmountUnit;
 }
 
 export interface WalletBalance {
@@ -22,7 +34,7 @@ export interface WalletBalance {
   available: BalanceAmount;
   total: BalanceAmount;
   network: string;
-  currency: string;
+  currency: Currency;
 }
 
 export interface Wallet {
@@ -43,53 +55,61 @@ export interface Wallet {
 }
 
 export interface PaymentData {
+  // bolt11
   amount_msats?: number;
+  max_fee_msats?: number;
+  fee_msats?: number | null;
+  // shared
   memo?: string;
   payment_request?: string;
-  max_fee_msats?: number;
+  // taproot asset
+  asset?: string; // 66-hex group key
+  amount?: Amount; // asset/base units
+  max_fee?: Amount | null; // btc msats or asset base units
+  fees?: Amount | null; // actual paid fee
+  // onchain
+  fee_sats?: number | null;
 }
 
 export interface Payment {
   id: string;
   created_at: string;
   updated_at: string;
-  currency: string;
+  currency: Currency;
   data: PaymentData;
   direction: 'send' | 'receive';
   environment_id: string;
   organization_id: string;
-  status: 'generating' | 'sending' | 'receiving' | 'completed' | 'failed';
-  type: 'bolt11';
+  status: 'generating' | 'sending' | 'receiving' | 'completed' | 'failed' | 'expired';
+  type: 'bolt11' | 'onchain' | 'bip21' | 'taprootasset';
   wallet_id: string;
   error: string | null;
   bip21_uri?: string;
-  requested_amount?: {
-    amount: number;
-    currency: string;
-    unit: string;
-  };
+  requested_amount?: Amount;
 }
 
-export interface CreatePaymentRequest {
-  id: string;
-  wallet_id: string;
-  currency: 'btc';
-  amount_msats?: number;
-  description?: string;
-  payment_kind?: 'bolt11';
-  data?: PaymentData;
+// Asset metadata for display
+export interface NamedAsset {
+  asset: string; // group key (66 hex)
+  name: string;
+  network: 'mutinynet' | 'mainnet' | 'testnet3' | 'signet' | 'testnet';
+  decimal_display: number; // how many decimals for human display
+}
+
+export interface SupportedAssets {
+  assets: NamedAsset[];
 }
 
 export interface PaymentStatusResponse {
-  status: 'generating' | 'sending' | 'receiving' | 'completed' | 'failed';
+  status: 'generating' | 'sending' | 'receiving' | 'completed' | 'failed' | 'expired';
   error?: string;
 }
 
 export interface LedgerEntry {
   credit_id: string;
   payment_id: string;
-  amount_msats: number;
-  currency: string;
+  amount_msats: number; // deprecated: kept for BTC entries; prefer SignedAmount on Balance
+  currency: Currency;
   effective_time: string;
   type: 'credited' | 'debited';
 }

@@ -1,10 +1,11 @@
-import { 
-  type VoltageConfig, 
-  type Wallet, 
-  type Payment, 
-  type CreatePaymentRequest, 
+import {
+  type VoltageConfig,
+  type Wallet,
+  type Payment,
   type LedgerResponse,
-  type PaymentStatusResponse 
+  type PaymentStatusResponse,
+  type SupportedAssets,
+  type Amount,
 } from '../types/voltage';
 
 class VoltageAPI {
@@ -81,14 +82,24 @@ class VoltageAPI {
     );
   }
 
+  // Assets
+  // Temporary note: We use this endpoint to discover asset metadata (name,
+  // decimal_display). The Wallet endpoint may not yet include asset balances
+  // in wallet.balances; the UI computes a best-effort asset balance fallback
+  // from recent payments until the official field is available.
+  async getSupportedAssets(): Promise<SupportedAssets> {
+    const params = new URLSearchParams();
+    if (this.config.network) params.set('network', this.config.network);
+    return this.makeRequest<SupportedAssets>(
+      `/organizations/${this.config.organizationId}/assets?${params.toString()}`
+    );
+  }
+
   // Payment Management
-  async createPayment(paymentRequest: CreatePaymentRequest): Promise<void> {
+  private async postPayment(payload: unknown): Promise<void> {
     await this.makeRequest<void>(
       `/organizations/${this.config.organizationId}/environments/${this.config.environmentId}/payments`,
-      {
-        method: 'POST',
-        body: JSON.stringify(paymentRequest),
-      }
+      { method: 'POST', body: JSON.stringify(payload) }
     );
   }
 
@@ -132,7 +143,7 @@ class VoltageAPI {
         error: payment.error || undefined 
       });
 
-      if (payment.status === 'completed' || payment.status === 'failed') {
+      if (payment.status === 'completed' || payment.status === 'failed' || payment.status === 'expired') {
         return payment;
       }
 
@@ -143,25 +154,29 @@ class VoltageAPI {
     throw new Error('Payment monitoring timeout');
   }
 
-  // Convenience Methods
+  // Convenience Methods - BTC receive (bolt11)
   async createReceivePayment(
     amountMsats: number, 
     description = 'Payment'
   ): Promise<string> {
     const paymentId = crypto.randomUUID();
     
-    await this.createPayment({
+    // Legacy receive payload supported by backend
+    const payload = {
       id: paymentId,
       wallet_id: this.config.walletId,
       currency: 'btc',
       amount_msats: amountMsats,
       description,
       payment_kind: 'bolt11',
-    });
+    } as const;
+
+    await this.postPayment(payload);
 
     return paymentId;
   }
 
+  // BTC send (bolt11)
   async createSendPayment(
     paymentRequest: string, 
     amountMsats?: number,
@@ -181,14 +196,72 @@ class VoltageAPI {
       },
     };
     
-    await this.makeRequest<void>(
-      `/organizations/${this.config.organizationId}/environments/${this.config.environmentId}/payments`,
-      {
-        method: 'POST',
-        body: JSON.stringify(sendPaymentRequest),
-      }
-    );
+    await this.postPayment(sendPaymentRequest);
 
+    return paymentId;
+  }
+
+  // Taproot Asset (Voltage Cash) - receive invoice
+  async createReceiveAssetPayment(
+    assetGroupKey: string,
+    amountBaseUnits: number,
+    description = 'Asset payment'
+  ): Promise<string> {
+    const paymentId = crypto.randomUUID();
+
+    const amount: Amount = {
+      currency: `asset:${assetGroupKey}` as const,
+      amount: amountBaseUnits,
+      unit: 'base units',
+    };
+
+    // Use receive (legacy) shape like BTC receive: top-level payment_kind and
+    // top-level amount. The send shape (type + data object) is different and is
+    // used by createSendAssetPayment below.
+    const payload = {
+      id: paymentId,
+      wallet_id: this.config.walletId,
+      currency: amount.currency,
+      payment_kind: 'taprootasset',
+      amount,
+      description: description || undefined,
+    } as const;
+
+    await this.postPayment(payload);
+    return paymentId;
+  }
+
+  // Taproot Asset (Voltage Cash) - send
+  async createSendAssetPayment(
+    paymentRequest: string,
+    assetGroupKey: string,
+    amountBaseUnits: number,
+    maxFee?: Amount // BTC msats or Asset base units
+  ): Promise<string> {
+    const paymentId = crypto.randomUUID();
+
+    const amount: Amount = {
+      currency: `asset:${assetGroupKey}` as const,
+      amount: amountBaseUnits,
+      unit: 'base units',
+    };
+
+    const max_fee: Amount | undefined = maxFee;
+
+    const payload = {
+      id: paymentId,
+      wallet_id: this.config.walletId,
+      currency: amount.currency,
+      type: 'taprootasset',
+      data: {
+        payment_request: paymentRequest,
+        asset: assetGroupKey,
+        amount,
+        ...(max_fee ? { max_fee } : {}),
+      },
+    } as const;
+
+    await this.postPayment(payload);
     return paymentId;
   }
 }
@@ -202,7 +275,8 @@ export const createVoltageAPI = (): VoltageAPI => {
     environmentId: import.meta.env.VITE_VOLTAGE_ENVIRONMENT_ID,
     walletId: import.meta.env.VITE_VOLTAGE_WALLET_ID,
     lineOfCreditId: import.meta.env.VITE_VOLTAGE_LINE_OF_CREDIT_ID,
-    network: import.meta.env.VITE_VOLTAGE_NETWORK as 'mutinynet' | 'mainnet' | 'testnet3',
+    network: import.meta.env.VITE_VOLTAGE_NETWORK as VoltageConfig['network'],
+    cashAssetGroupKey: import.meta.env.VITE_VOLTAGE_CASH_ASSET,
   };
 
   // Validate required environment variables

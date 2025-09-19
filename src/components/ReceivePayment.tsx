@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createVoltageAPI } from '../services/voltage';
-import type { Payment } from '../types/voltage';
+import type { Payment, NamedAsset } from '../types/voltage';
 
 interface ReceivePaymentProps {
   onSuccess?: (payment: Payment) => void;
@@ -13,6 +13,33 @@ export default function ReceivePayment({ onSuccess, onError }: ReceivePaymentPro
   const [loading, setLoading] = useState(false);
   const [invoice, setInvoice] = useState<string | null>(null);
   const [, setPaymentId] = useState<string | null>(null);
+  const [mode, setMode] = useState<'btc' | 'asset'>('btc');
+  const [selectedAsset, setSelectedAsset] = useState<NamedAsset | null>(null);
+
+  // Load supported assets and prefer Voltage Cash if present. If
+  // VITE_VOLTAGE_CASH_ASSET is set, we pin to that group key.
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const api = createVoltageAPI();
+        const supported = await api.getSupportedAssets().catch(() => null);
+        if (supported) {
+          const envKey = import.meta.env?.VITE_VOLTAGE_CASH_ASSET as string | undefined;
+          const byEnv = envKey
+            ? supported.assets.find(a => a.asset.toLowerCase() === envKey.toLowerCase())
+            : undefined;
+          const byName = supported.assets.find(a => a.name.toLowerCase().includes('voltage cash'));
+          const pick = byEnv || byName || supported.assets[0];
+          if (pick) setSelectedAsset(pick);
+        }
+      } catch {
+        // ignore; asset mode will be disabled if no asset
+      }
+    };
+    init();
+  }, []);
+
+  const assetLabel = useMemo(() => selectedAsset?.name || 'Asset', [selectedAsset]);
 
   const handleCreateInvoice = async () => {
     if (!amount || isNaN(Number(amount))) {
@@ -23,9 +50,18 @@ export default function ReceivePayment({ onSuccess, onError }: ReceivePaymentPro
     setLoading(true);
     try {
       const api = createVoltageAPI();
-      const amountMsats = Math.floor(Number(amount) * 1000);
-      
-      const newPaymentId = await api.createReceivePayment(amountMsats, description);
+      let newPaymentId: string;
+
+      if (mode === 'btc') {
+        const amountMsats = Math.floor(Number(amount) * 1000);
+        newPaymentId = await api.createReceivePayment(amountMsats, description);
+      } else {
+        if (!selectedAsset) {
+          throw new Error('No asset available for receiving');
+        }
+        const baseUnits = Math.floor(Number(amount) * Math.pow(10, selectedAsset.decimal_display));
+        newPaymentId = await api.createReceiveAssetPayment(selectedAsset.asset, baseUnits, description);
+      }
       setPaymentId(newPaymentId);
 
       // Wait for the invoice to be generated
@@ -44,6 +80,7 @@ export default function ReceivePayment({ onSuccess, onError }: ReceivePaymentPro
         api.monitorPaymentStatus(newPaymentId, (status) => {
           if (status.status === 'completed') {
             onSuccess?.(payment);
+            window.dispatchEvent(new CustomEvent('wallet:refresh'));
           } else if (status.status === 'failed') {
             onError?.(status.error || 'Payment failed');
           }
@@ -51,7 +88,7 @@ export default function ReceivePayment({ onSuccess, onError }: ReceivePaymentPro
           onError?.(error.message);
         });
       } else {
-        onError?.('Failed to generate Lightning invoice');
+        onError?.('Failed to generate invoice');
       }
 
     } catch (error) {
@@ -75,84 +112,125 @@ export default function ReceivePayment({ onSuccess, onError }: ReceivePaymentPro
     }
   };
 
+  const segmentClass = (isActive: boolean, disabledState = false) => [
+    'pill transition-colors duration-150 ease-out',
+    isActive ? 'bg-brand text-ink-inverse border-brand shadow-card' : 'hover:border-brand/60 hover:text-ink',
+    disabledState ? 'opacity-50 cursor-not-allowed' : '',
+  ].filter(Boolean).join(' ');
+
+  const amountValue = Number(amount || '0');
+  const hasAmount = Number.isFinite(amountValue) && amountValue > 0;
+  const primaryCtaClass = `${hasAmount && !loading ? 'btn-primary' : 'btn-disabled'} w-full justify-center`;
+
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold mb-4">Receive Payment</h2>
-      
+    <section className="surface-panel p-6 space-y-6">
+      <div className="space-y-1">
+        <h2 className="text-display-md font-medium">Receive Payment</h2>
+        <p className="text-body-subtle">Generate Lightning or taproot asset invoices.</p>
+      </div>
+
       {!invoice ? (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Amount (sats)
-            </label>
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter amount in sats"
-              disabled={loading}
-            />
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <span className="heading-eyebrow">Payment Rail</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={segmentClass(mode === 'btc')}
+                onClick={() => setMode('btc')}
+              >
+                Bitcoin (BTC)
+              </button>
+              <button
+                type="button"
+                className={segmentClass(mode === 'asset', !selectedAsset)}
+                onClick={() => setMode('asset')}
+                disabled={!selectedAsset}
+              >
+                {selectedAsset ? assetLabel : 'Asset (unavailable)'}
+              </button>
+            </div>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Description (optional)
-            </label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Payment description"
-              disabled={loading}
-            />
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="field-group">
+              <label className="field-label" htmlFor="receive-amount">
+                {mode === 'btc' ? 'Amount (sats)' : `Amount (${assetLabel})`}
+              </label>
+              <input
+                id="receive-amount"
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="input"
+                placeholder={mode === 'btc' ? 'Enter amount in sats' : `Enter amount in ${assetLabel}`}
+                disabled={loading}
+              />
+            </div>
+
+            <div className="field-group">
+              <label className="field-label" htmlFor="receive-description">
+                Description (optional)
+              </label>
+              <input
+                id="receive-description"
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="input"
+                placeholder="Payment description"
+                disabled={loading}
+              />
+            </div>
           </div>
-          
+
           <button
+            type="button"
             onClick={handleCreateInvoice}
-            disabled={loading || !amount}
-            className="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            disabled={!hasAmount || loading}
+            className={primaryCtaClass}
           >
-            {loading ? 'Creating Invoice...' : 'Create Invoice'}
+            {loading ? 'Creating Invoice…' : 'Create Invoice'}
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Lightning Invoice
+        <div className="space-y-6">
+          <div className="field-group">
+            <label className="field-label" htmlFor="generated-invoice">
+              {mode === 'btc' ? 'Lightning Invoice' : `${assetLabel} Invoice`}
             </label>
             <div className="relative">
               <textarea
+                id="generated-invoice"
                 value={invoice}
                 readOnly
-                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm font-mono"
-                rows={4}
+                className="input min-h-[9rem] resize-none font-mono bg-surface-subtle"
               />
               <button
+                type="button"
                 onClick={copyToClipboard}
-                className="absolute top-2 right-2 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                className="pill absolute right-3 top-3 bg-brand text-ink-inverse border-brand"
               >
                 Copy
               </button>
             </div>
           </div>
-          
-          <div className="text-sm text-gray-600">
-            <p>Amount: {amount} sats</p>
-            {description && <p>Description: {description}</p>}
-            <p className="text-orange-600 mt-2">Waiting for payment...</p>
+
+          <div className="rounded-2xl border border-border-default bg-surface px-5 py-4 text-body-md text-ink">
+            <p>Amount: {amount} {mode === 'btc' ? 'sats' : assetLabel}</p>
+            {description && <p className="text-body-muted">Description: {description}</p>}
+            <p className="mt-3 text-brand">Waiting for payment…</p>
           </div>
-          
+
           <button
+            type="button"
             onClick={handleReset}
-            className="w-full bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600"
+            className="btn-secondary w-full justify-center"
           >
             Create New Invoice
           </button>
         </div>
       )}
-    </div>
+    </section>
   );
 }

@@ -4,20 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Voltage Pay wallet demo application - a React-based frontend for demonstrating Lightning Network payment integration using the Voltage API. The project is in early development stages with basic React boilerplate and Tailwind CSS styling.
+This is a Voltage Pay wallet demo application - a React-based Lightning Network wallet demonstrating the Voltage Payments API integration. The application provides a fully functional wallet interface with sending, receiving, and transaction history features.
 
 ## Technology Stack
 
 - **Frontend**: React 19.1.0 with TypeScript
 - **Build Tool**: Vite 7.0.4
-- **Styling**: Tailwind CSS 4.1.11 with the new Vite plugin
+- **Styling**: Tailwind CSS 4.1.11 (new Vite plugin)
+- **State Management**: React hooks (useState, useEffect, custom hooks)
+- **API Client**: Custom TypeScript wrapper for Voltage API
 - **Linting**: ESLint 9.30.1 with TypeScript ESLint
-- **Package Manager**: npm (uses package-lock.json)
 
 ## Development Commands
 
 ```bash
-# Start development server
+# Start development server (with API proxy)
 npm run dev
 
 # Build for production
@@ -30,54 +31,83 @@ npm run lint
 npm run preview
 ```
 
-## Project Structure
+## High-Level Architecture
 
+### Component Architecture
+The application uses a tab-based navigation system with four main features:
+- **Balance Display**: Real-time wallet balance in sats and BTC
+- **Send Payment**: Lightning invoice payment interface
+- **Receive Payment**: Invoice generation for receiving payments
+- **Transaction History**: Paginated transaction list with details
+
+### Service Layer
+- `services/voltage.ts`: Centralized API client managing all Voltage API interactions
+- Implements retry logic, error handling, and response transformation
+- Uses environment variables for configuration (API key, wallet ID)
+
+### Custom Hooks
+- `useNotification`: Global notification system for user feedback
+- `usePaymentMonitor`: Polls payment status until completion/failure
+
+### Type Safety
+- `types/voltage.ts`: Comprehensive TypeScript definitions for all API responses
+- Strict typing throughout the application
+
+## API Integration Pattern
+
+### Payment Flow
+1. **Receiving**: Create payment → Get 202 response → Poll for invoice → Display to user
+2. **Sending**: Parse invoice → Create payment → Get 202 response → Monitor status
+3. **Status Monitoring**: Poll `/payments/{id}` endpoint until terminal state
+
+### Error Handling
+- API errors display user-friendly messages via notification system
+- Network failures trigger retry mechanisms
+- Invalid states handled gracefully with error boundaries
+
+### Development vs Production
+- **Development**: Uses Vite proxy to handle CORS (`/api` → `https://voltageapi.com/v1`)
+- **Production**: Direct API calls with proper CORS headers
+
+## Environment Configuration
+
+Required environment variables:
+```env
+VITE_VOLTAGE_API_KEY=your-api-key
+VITE_VOLTAGE_WALLET_ID=your-wallet-id
+VITE_VOLTAGE_API_URL=https://voltageapi.com/v1
 ```
-src/
-├── App.tsx          # Main application component (currently minimal)
-├── main.tsx         # React application entry point
-├── globals.css      # Global styles with Tailwind import
-├── assets/          # Static assets
-└── vite-env.d.ts    # Vite TypeScript definitions
-```
 
-## Voltage API Integration Context
+## Key Implementation Details
 
-This project is intended to demonstrate the Voltage Payments API, which provides Lightning Network functionality without requiring node management. Key concepts from the documentation:
+### Payment Status Monitoring
+The `usePaymentMonitor` hook implements exponential backoff polling:
+- Initial poll: 1 second
+- Max interval: 10 seconds
+- Stops on terminal states: COMPLETED, FAILED, EXPIRED
 
-### Payment Flow Architecture
-- **Receiving**: Create payment → Get 202 response → Fetch payment details for invoice
-- **Sending**: Initiate payment → Get 202 response → Monitor payment status
-- **Status Monitoring**: Poll payment status endpoints for completion/failure
+### Transaction History
+- Paginated with 10 transactions per page
+- Displays both sent and received payments
+- Shows amount, status, timestamp, and description
 
-### API Structure
-- Base URL: `https://voltageapi.com/v1`
-- Authentication: `x-api-key` header
-- Organization/Environment/Wallet hierarchy
-- Credit-based payment system (like business credit card)
+### Amount Handling
+- All amounts internally handled in satoshis (integer)
+- UI displays both sats and BTC formats
+- Conversion utilities in voltage service
+
+## Testing Considerations
+
+No testing framework is currently configured. When adding tests, focus on:
+- Payment flow integration tests
+- API error handling scenarios
+- Amount conversion accuracy
+- Component interaction flows
 
 ## Development Notes
 
-- The application currently has minimal implementation (just "Hello world")
-- Tailwind CSS is configured with the new Vite plugin approach
-- TypeScript is strictly configured with separate app/node configs
-- ESLint is set up with React hooks and refresh plugins
-- The project uses Vite's fast refresh for React development
-
-## Key Implementation Areas
-
-When implementing Voltage API features, focus on:
-
-1. **Payment Creation Flow**: Handle the 202 response pattern for both send/receive
-2. **Status Monitoring**: Implement polling logic for payment status updates
-3. **Error Handling**: Use standard HTTP status codes (200, 201, 202, 400, 403, 404, 500)
-4. **Wallet Management**: Balance checking and transaction history
-5. **Metadata Support**: Custom metadata for wallets and payments
-
-## Testing
-
-No testing framework is currently configured. Consider adding Jest or Vitest for testing payment flows and API integrations.
-
-## Environment Setup
-
-The project expects staging environment setup through the Voltage dashboard before API integration. API keys should be environment-specific and never committed to the repository.
+- The app uses React 19's latest features
+- Tailwind CSS configured with Vite plugin (not PostCSS)
+- TypeScript strict mode enabled
+- No external state management library needed
+- All API responses follow 202 async pattern
