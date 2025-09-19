@@ -2,6 +2,24 @@ import { useState, useCallback } from 'react';
 import type { Payment, PaymentStatusResponse } from '../types/voltage';
 import { createVoltageAPI } from '../services/voltage';
 
+const toErrorMessage = (value: unknown): string => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (value instanceof Error) return value.message;
+  if (typeof value === 'object') {
+    const detail = (value as { detail?: unknown }).detail;
+    if (typeof detail === 'string' && detail.trim()) return detail;
+    const message = (value as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '';
+    }
+  }
+  return String(value);
+};
+
 interface PaymentMonitorState {
   isMonitoring: boolean;
   currentStatus: string | null;
@@ -32,7 +50,7 @@ export const usePaymentMonitor = () => {
           setState(prev => ({ ...prev, currentStatus: status.status }));
           
           if (status.status === 'failed') {
-            const errorMsg = status.error || 'Payment failed';
+            const errorMsg = toErrorMessage(status.error) || 'Payment failed';
             setState(prev => ({ ...prev, error: errorMsg, isMonitoring: false }));
             onError(errorMsg);
           }
@@ -46,7 +64,7 @@ export const usePaymentMonitor = () => {
       }
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Payment monitoring failed';
+      const errorMessage = toErrorMessage(error) || 'Payment monitoring failed';
       setState(prev => ({ ...prev, error: errorMessage, isMonitoring: false }));
       onError(errorMessage);
     }

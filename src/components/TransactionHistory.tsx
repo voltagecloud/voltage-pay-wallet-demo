@@ -48,6 +48,9 @@ export default function TransactionHistory({ onError }: TransactionHistoryProps)
     if (payment.data?.amount_msats) {
       return `${formatSats(payment.data.amount_msats)} sats`;
     }
+    if (typeof payment.data?.amount_sats === 'number') {
+      return `${payment.data.amount_sats.toLocaleString()} sats`;
+    }
     const amt: Amount | undefined = payment.requested_amount || payment.data?.amount;
     if (!amt) return 'N/A';
     const cur = String(amt.currency).toLowerCase();
@@ -115,6 +118,34 @@ export default function TransactionHistory({ onError }: TransactionHistoryProps)
     return request;
   };
 
+  const copyToClipboard = (value: string | undefined | null) => {
+    if (!value) return;
+    navigator.clipboard.writeText(value);
+  };
+
+  const formatTxId = (txId: string) => {
+    if (txId.length <= 22) return txId;
+    return `${txId.slice(0, 12)}…${txId.slice(-8)}`;
+  };
+
+  const toDisplayString = (value: unknown) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (value instanceof Error) return value.message;
+    if (typeof value === 'object') {
+      const detail = (value as { detail?: unknown }).detail;
+      if (typeof detail === 'string' && detail.trim()) return detail;
+      const message = (value as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) return message;
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return '';
+      }
+    }
+    return String(value);
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
@@ -154,13 +185,15 @@ export default function TransactionHistory({ onError }: TransactionHistoryProps)
         <p className="text-body-muted text-center py-8">No payments yet.</p>
       ) : (
         <div className="space-y-3">
-          {payments.map((payment) => (
-            <article key={payment.id} className="rounded-2xl border border-border-default bg-surface px-5 py-4">
-              <button
-                type="button"
-                onClick={() => setSelectedPayment(selectedPayment?.id === payment.id ? null : payment)}
-                className="flex w-full items-start justify-between gap-4 text-left transition-colors hover:bg-surface-subtle rounded-2xl px-3 py-2"
-              >
+          {payments.map((payment) => {
+            const onchainEntries = payment.data?.receipts ?? payment.data?.outflows ?? null;
+            return (
+              <article key={payment.id} className="rounded-2xl border border-border-default bg-surface px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPayment(selectedPayment?.id === payment.id ? null : payment)}
+                  className="flex w-full items-start justify-between gap-4 text-left transition-colors hover:bg-surface-subtle rounded-2xl px-3 py-2"
+                >
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="text-lg text-ink-muted">{getDirectionIcon(payment.direction)}</span>
@@ -216,6 +249,24 @@ export default function TransactionHistory({ onError }: TransactionHistoryProps)
                     </div>
                   )}
 
+                  {(payment.type === 'onchain' || payment.type === 'bip21') && payment.data.address && (
+                    <div className="space-y-2">
+                      <p className="text-body-md-strong text-ink-muted">Bitcoin Address</p>
+                      <p className="rounded-2xl border border-border-default bg-surface px-4 py-2 font-mono text-xs text-ink break-all">
+                        {formatPaymentRequest(payment.data.address)}
+                      </p>
+                    </div>
+                  )}
+
+                  {(payment.type === 'onchain' || payment.type === 'bip21' || payment.bip21_uri) && payment.bip21_uri && (
+                    <div className="space-y-2">
+                      <p className="text-body-md-strong text-ink-muted">BIP21 URI</p>
+                      <p className="rounded-2xl border border-border-default bg-surface px-4 py-2 font-mono text-xs text-ink break-all">
+                        {formatPaymentRequest(payment.bip21_uri)}
+                      </p>
+                    </div>
+                  )}
+
                   {payment.direction === 'send' && (
                     <div className="grid gap-4 md:grid-cols-2">
                       {typeof payment.data.fee_msats === 'number' && (
@@ -248,6 +299,12 @@ export default function TransactionHistory({ onError }: TransactionHistoryProps)
                           <p>{formatAnyAmount(payment.data.max_fee)}</p>
                         </div>
                       )}
+                      {typeof payment.data.max_fee_sats === 'number' && (
+                        <div>
+                          <p className="text-body-md-strong text-ink-muted">Max Fee (limit)</p>
+                          <p>{payment.data.max_fee_sats.toLocaleString()} sats</p>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -262,16 +319,50 @@ export default function TransactionHistory({ onError }: TransactionHistoryProps)
                     </div>
                   </div>
 
-                  {payment.error && (
+                  {toDisplayString(payment.error) && (
                     <div className="border-t border-border-muted pt-4">
                       <p className="text-body-md-strong text-danger">Error</p>
-                      <p className="text-body-md text-danger">{payment.error}</p>
+                      <p className="text-body-md text-danger">{toDisplayString(payment.error)}</p>
+                    </div>
+                  )}
+
+                  {onchainEntries && onchainEntries.length > 0 && (
+                    <div className="border-t border-border-muted pt-4">
+                      <p className="text-body-md-strong text-ink-muted">On-chain Activity</p>
+                      <ul className="mt-2 space-y-2 text-body-sm text-ink-subtle">
+                        {onchainEntries.slice(0, 3).map((entry) => (
+                          <li
+                            key={`${entry.tx_id}-${entry.ledger_id ?? entry.required_confirmations_num}`}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-muted bg-surface px-3 py-2"
+                          >
+                            <div className="space-y-1">
+                              <p className="font-mono text-xs text-ink">{formatTxId(entry.tx_id)}</p>
+                              <p className="text-body-xs text-ink-subtle">
+                                {entry.amount_sats.toLocaleString()} sats • {entry.required_confirmations_num} confs
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="pill border-border-default text-body-xs"
+                              onClick={() => copyToClipboard(entry.tx_id)}
+                            >
+                              Copy
+                            </button>
+                          </li>
+                        ))}
+                        {onchainEntries.length > 3 && (
+                          <li className="text-body-xs text-ink-muted">
+                            +{onchainEntries.length - 3} additional output{onchainEntries.length - 3 === 1 ? '' : 's'}
+                          </li>
+                        )}
+                      </ul>
                     </div>
                   )}
                 </div>
               )}
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       )}
     </section>

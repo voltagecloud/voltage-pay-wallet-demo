@@ -264,6 +264,54 @@ class VoltageAPI {
     await this.postPayment(payload);
     return paymentId;
   }
+
+  // On-chain BTC - receive (address generation)
+  async createReceiveOnchainPayment(
+    amountSats: number,
+    description = 'On-chain payment',
+    expirationSeconds?: number
+  ): Promise<string> {
+    const paymentId = crypto.randomUUID();
+
+    const payload = {
+      id: paymentId,
+      wallet_id: this.config.walletId,
+      currency: 'btc' as const,
+      payment_kind: 'onchain' as const,
+      amount_sats: amountSats,
+      description: description || undefined,
+      ...(typeof expirationSeconds === 'number' ? { expiration: expirationSeconds } : {}),
+    };
+
+    await this.postPayment(payload);
+    return paymentId;
+  }
+
+  // On-chain BTC - send
+  async createSendOnchainPayment(
+    address: string,
+    amountSats: number,
+    maxFeeSats: number,
+    description?: string
+  ): Promise<string> {
+    const paymentId = crypto.randomUUID();
+
+    const payload = {
+      id: paymentId,
+      wallet_id: this.config.walletId,
+      currency: 'btc' as const,
+      type: 'onchain' as const,
+      data: {
+        address,
+        amount_sats: amountSats,
+        max_fee_sats: maxFeeSats,
+        ...(description ? { description } : {}),
+      },
+    } as const;
+
+    await this.postPayment(payload);
+    return paymentId;
+  }
 }
 
 // Create and export a configured instance

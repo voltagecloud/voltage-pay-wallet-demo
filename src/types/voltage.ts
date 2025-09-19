@@ -62,13 +62,22 @@ export interface PaymentData {
   // shared
   memo?: string;
   payment_request?: string;
+  description?: string | null;
   // taproot asset
   asset?: string; // 66-hex group key
   amount?: Amount; // asset/base units
   max_fee?: Amount | null; // btc msats or asset base units
   fees?: Amount | null; // actual paid fee
-  // onchain
+  // onchain & bip21
+  address?: string | null;
+  amount_sats?: number;
+  max_fee_sats?: number;
   fee_sats?: number | null;
+  outflows?: OnChainPaymentReceipt[];
+  receipts?: OnChainPaymentReceipt[];
+  label?: string | null;
+  // onchain
+  // (fee_sats retained above for backwards compatibility)
 }
 
 export interface Payment {
@@ -83,9 +92,30 @@ export interface Payment {
   status: 'generating' | 'sending' | 'receiving' | 'completed' | 'failed' | 'expired';
   type: 'bolt11' | 'onchain' | 'bip21' | 'taprootasset';
   wallet_id: string;
-  error: string | null;
+  error: string | { detail?: unknown; type?: string; [key: string]: unknown } | null;
   bip21_uri?: string;
   requested_amount?: Amount;
+}
+
+export interface SanctionedInput {
+  outpoint: string;
+  address: string;
+  amount: Amount;
+}
+
+export interface SanctionedTxInfo {
+  tx_id: string;
+  sanctioned_inputs: SanctionedInput[];
+  sanctioned_value: Amount;
+}
+
+export interface OnChainPaymentReceipt {
+  tx_id: string;
+  amount_sats: number;
+  required_confirmations_num: number;
+  height_mined_at: number | null;
+  ledger_id: string | null;
+  sanctioned_info?: SanctionedTxInfo | null;
 }
 
 // Asset metadata for display
@@ -102,7 +132,7 @@ export interface SupportedAssets {
 
 export interface PaymentStatusResponse {
   status: 'generating' | 'sending' | 'receiving' | 'completed' | 'failed' | 'expired';
-  error?: string;
+  error?: string | Record<string, unknown>;
 }
 
 export interface LedgerEntry {

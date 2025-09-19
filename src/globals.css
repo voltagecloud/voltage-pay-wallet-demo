@@ -120,24 +120,24 @@
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-pill px-6 py-3 text-body-md-strong transition-colors duration-150 ease-out;
+    @apply inline-flex items-center justify-center gap-2 rounded-pill px-6 py-3 text-body-md-strong transition duration-150 ease-out cursor-pointer;
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-pill px-6 py-3 text-body-md-strong transition-colors duration-150 ease-out text-ink-inverse shadow focus-visible:outline-none focus-visible:ring-4;
+    @apply inline-flex items-center justify-center gap-2 rounded-pill px-6 py-3 text-body-md-strong transition duration-150 ease-out text-ink-inverse shadow focus-visible:outline-none focus-visible:ring-4 cursor-pointer;
     background-color: var(--color-brand);
     --tw-ring-color: var(--color-brand-focus);
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-pill px-6 py-3 text-body-md-strong transition-colors duration-150 ease-out border bg-transparent focus-visible:outline-none focus-visible:ring-4;
+    @apply inline-flex items-center justify-center gap-2 rounded-pill px-6 py-3 text-body-md-strong transition duration-150 ease-out border bg-transparent focus-visible:outline-none focus-visible:ring-4 cursor-pointer;
     border-color: var(--color-brand);
     color: var(--color-brand);
     --tw-ring-color: var(--color-brand-focus);
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-pill px-6 py-3 text-body-md-strong transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-4;
+    @apply inline-flex items-center justify-center gap-2 rounded-pill px-6 py-3 text-body-md-strong transition duration-150 ease-out focus-visible:outline-none focus-visible:ring-4 cursor-pointer;
     color: var(--color-ink-muted);
     --tw-ring-color: var(--color-brand-focus);
   }
@@ -149,7 +149,7 @@
   }
 
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 rounded-pill px-6 py-3 text-body-md-strong transition-colors duration-150 ease-out text-ink-inverse focus-visible:outline-none focus-visible:ring-4;
+    @apply inline-flex items-center justify-center gap-2 rounded-pill px-6 py-3 text-body-md-strong transition duration-150 ease-out text-ink-inverse focus-visible:outline-none focus-visible:ring-4 cursor-pointer;
     background-color: var(--color-danger);
     --tw-ring-color: rgba(204, 0, 0, 0.4);
   }
@@ -206,7 +206,7 @@
   }
 
   .pill {
-    @apply rounded-pill px-3 py-1 text-body-sm;
+    @apply rounded-pill px-3 py-1 text-body-sm transition duration-150 ease-out cursor-pointer;
     border: 1px solid var(--color-border-muted);
     background-color: var(--color-surface-subtle);
     color: var(--color-ink-muted);
@@ -229,13 +229,58 @@
   }
 
   .tab-trigger {
-    @apply flex-1 rounded-pill px-5 py-3 text-body-md text-ink-muted transition-colors hover:text-ink;
+    @apply flex-1 rounded-pill px-5 py-3 text-body-md text-ink-muted transition-colors hover:text-ink cursor-pointer;
   }
 
   .tab-trigger[data-active="true"] {
     @apply shadow;
     background-color: var(--color-brand);
     color: var(--color-ink-inverse);
+  }
+
+  .tab-trigger[data-active="false"]:hover {
+    background-color: rgba(25, 102, 255, 0.1);
+  }
+
+  @media (hover: hover) {
+    .btn-primary:not(.btn-disabled):hover {
+      background-color: #0f4fe6;
+      transform: translateY(-1px);
+      box-shadow: 0 12px 20px rgba(25, 102, 255, 0.18);
+    }
+
+    .btn-secondary:not(.btn-disabled):hover {
+      background-color: rgba(25, 102, 255, 0.08);
+      color: var(--color-brand);
+      transform: translateY(-1px);
+    }
+
+    .btn-ghost:not(.btn-disabled):hover {
+      color: var(--color-ink-default);
+      background-color: rgba(25, 102, 255, 0.06);
+      transform: translateY(-1px);
+    }
+
+    .btn-danger:not(.btn-disabled):hover {
+      background-color: #a30000;
+      transform: translateY(-1px);
+      box-shadow: 0 12px 20px rgba(204, 0, 0, 0.18);
+    }
+
+    .pill:hover {
+      background-color: rgba(25, 102, 255, 0.12);
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+  }
+
+  .btn-primary:not(.btn-disabled):active,
+  .btn-secondary:not(.btn-disabled):active,
+  .btn-ghost:not(.btn-disabled):active,
+  .btn-danger:not(.btn-disabled):active,
+  .pill:active {
+    transform: translateY(0);
+    box-shadow: none;
   }
 }
 
